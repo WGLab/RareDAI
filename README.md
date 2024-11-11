@@ -36,14 +36,14 @@ In the command above, we utilize the accelerate package for model sharding. PEFT
     - Download the updated fine-tuning in the release section on GitHub (Latest version: v1.0.0)
     - Save model weights in the ./model/
 2. Input:
-    - Input files should be json files including "input", "icd", "patid" for inference and additionally "output" if fine-tuning.
+    - Input files should be json files including "input", "icd", "mrn" for inference and additionally "output" if fine-tuning.
     - Input file can be either a single json file or a whole directory containing all input json files
 3. Download additional Database
-    - Phecode ICD10: download phecode_definitions1.2.csv and Phecode_map_v1_2_icd10_beta.csv from the link 
+    - Phecode ICD10: download phecode_definitions1.2.csv and Phecode_map_v1_2_icd10_beta.csv from the [link](https://phewascatalog.org/phecodes_icd10).
 
 ## Fine-tuning
 The fine-tuning process is divided into three stages:
-1. Data collection: please process and clean your own data before fine-tuning/inference. You can refer our paper to see how our notes are selected. Save all the features (input, icd, phenotypes, output) in the JSON file for each patient.
+1. Data collection: please process and clean your own data before fine-tuning/inference. You can refer our paper to see how our notes are selected. Save all the features (input, icd, mrn, phenotypes, output) in the JSON file for each patient.
     - Make sure your ICD10 are converted to Phecodes and separated by "|". You can use some codes in our script to process the data.
     - Example: Phecode A | Phecode B | Phecode C
 2. Generate synthetic CoT for training and validation datasets.
