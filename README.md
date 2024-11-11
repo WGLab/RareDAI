@@ -1,5 +1,5 @@
 # RareDAI
-RareDAI is an advanced LLM technique, fine-tuned on LLama 3.1 models, designed to support genetic counselors and patients in choosing the most appropriate molecular genetic tests, such as gene panels or WES/WGS, through clear and comprehensive explanations. The model in the paper was fine-tuned using data from the Children’s Hospital of Philadelphia (CHOP). Due to the presence of protected health information, we cannot publicly release the model; however, we have provided guidelines for adapting or fine-tuning LLMs on in-house data. The model accepts clinical notes and Phecodes (converted from ICD-10) as input. You can fine-tune your own model with additional details (such as phenotypes HPO, demographics, etc); however, we recommend that the additional information may be only useful if they are concise and not redundant or irrelevant. This process is elaborated in the subsequent [section](##Fine-tuning). 
+RareDAI is an advanced LLM technique, fine-tuned on LLama 3.1 models, designed to support genetic counselors and patients in choosing the most appropriate molecular genetic tests, such as gene panels or WES/WGS, through clear and comprehensive explanations. The model in the paper was fine-tuned using data from the Children’s Hospital of Philadelphia (CHOP). Due to the presence of protected health information, we cannot publicly release the model; however, we have provided guidelines for adapting or fine-tuning LLMs on in-house data. The model accepts clinical notes and Phecodes (converted from ICD-10) as input. You can fine-tune your own model with additional details (such as phenotypes HPO, demographics, etc); however, we recommend that the additional information may be only useful if they are concise and not redundant or irrelevant. This process is elaborated in the subsequent [section](## Fine-tuning). 
 
 RareAI is distributed under the [MIT License by Wang Genomics Lab](https://wglab.mit-license.org/).
 
@@ -47,16 +47,16 @@ The fine-tuning process is divided into three stages:
     - Make sure your ICD10 are converted to Phecodes and separated by "|". You can use some codes in our script to process the data.
     - Example: Phecode A | Phecode B | Phecode C
 2. Generate synthetic CoT for training and validation datasets.
-    a. Please modify the necessary SLURM arguments in [script](https://github.com/WGLab/RareDAI/blob/main/run_syntheticCOT.sh) to run [script](https://github.com/WGLab/RareDAI/blob/main/generate_syntheticCOT.py)
-    b. You should provide the directory where your training/validation JSON-formatted files are located as the input and the file directory of the output in which you want to save the synthetic data. Each of your JSON data should have an additional "cot" key (except testing data). Make sure your input file has the correct keys like mentioned above.
-    c. Please replace the Python script at line 17 with the foundation Llama 3.1 directory.
+    - Please modify the necessary SLURM arguments in [run_syntheticCOT.sh](https://github.com/WGLab/RareDAI/blob/main/run_syntheticCOT.sh) to run [generate_syntheticCOT.py](https://github.com/WGLab/RareDAI/blob/main/generate_syntheticCOT.py)
+    - You should provide the directory where your training/validation JSON-formatted files are located as the input and the file directory of the output in which you want to save the synthetic data. Each of your JSON data should have an additional "cot" key (except testing data). Make sure your input file has the correct keys like mentioned above.
+    - Please replace the Python script at line 17 with the foundation Llama 3.1 directory.
 3. Fine-tune the model with generated synthetic CoT from stage 2.
-    a. Please modify the necessary SLURM arguments in [script](https://github.com/WGLab/RareDAI/blob/main/run_rareDAI.sh) to run [script](https://github.com/WGLab/RareDAI/blob/main/rareDAI_finetuning.py)
-    c. Please replace the Python script at line 24, 83, 84, 93 with the corresponding directory.
+    - Please modify the necessary SLURM arguments in [run_RareDAI.sh](https://github.com/WGLab/RareDAI/blob/main/run_RareDAI.sh) to run [RareDAI_finetuning.py](https://github.com/WGLab/RareDAI/blob/main/RareDAI_finetuning.py)
+    - Please replace the Python script at line 24, 83, 84, 93 with the corresponding directory.
 * If you're encountering CUDA memory issues, it’s likely due to large input texts exceeding your system’s capacity for model training. To address this issue, consider either increasing the number of GPUs and CPUs or adjusting training parameters by reducing the batch size or increasing gradient accumulation steps.
 
 ## Inference
-Please fine-tune your own model before. Please follow the inference section of the [script](https://github.com/WGLab/RareDAI/blob/main/inference.py) to run your model.
+Please fine-tune your own model first. Please follow the inference section of the [inference.py](https://github.com/WGLab/RareDAI/blob/main/inference.py) to run your model.
 
 Please use the following command:
 ```

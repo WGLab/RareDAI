@@ -9,5 +9,5 @@
 #SBATCH --mail-user=
 module load CUDA/12.1.1
 
-python rareDAI_finetuning.py
-#####################sbatch -p gpu-xe9680q run_rareDAI.sh################
+python RareDAI_finetuning.py
+#####################sbatch -p gpu-xe9680q run_RareDAI.sh################

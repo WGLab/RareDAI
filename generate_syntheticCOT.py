@@ -37,7 +37,7 @@ def generate_prompt(data_point):
         label1 = 'genome sequencing'
         label2 = 'gene panel'
     instruction = "You are a genetic counselor. Based on the provided definitions, explain why the recommended test is the most suitable choice for this patient. Be concise, accurate, and avoid fabricating any details.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
-    question = f"""Explain why the recommended test, {data_point['output']}, is the best choice for the patient described in the following clinical note. Build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients. Focus on whether the patient has distinct clinical features and a medical history or family history suggesting specific conditions (favoring a gene panel) or presents with unclear symptoms needing comprehensive investigation (favoring genome sequencing). Input:\n"""
+    question = f"""Explain why the recommended test, {data_point['output']}, is the best choice for the patient described in the following input. Build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients using all the given ICD-10 diagnoses and clinical note. Focus on whether the patient has distinct clinical features and a medical history or family history suggesting specific conditions (favoring a gene panel) or presents with unclear symptoms needing comprehensive investigation (favoring genome sequencing). Input:\n"""
     base_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
     {system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -65,11 +65,11 @@ def read_text(input_file):
             for pat_data in data:
                 # Assert that the variable is a dictionary
                 assert isinstance(pat_data, dict), "The given data is not a dictionary."  
-                # Assert that both 'input', 'icd', 'patid' keys are present
+                # Assert that both 'input', 'icd', 'mrn' keys are present
                 assert "input" in pat_data, "The given data is missing 'input' key."
                 assert "icd" in pat_data, "The given data is missing 'icd' key."
-                assert "patid" in pat_data, "The given data is missing 'patid' key."
-                input_dict[file_name + "_" + pat_data['patid']] = pat_data
+                assert "mrn" in pat_data, "The given data is missing 'mrn' key."
+                input_dict[file_name + "_" + pat_data['mrn']] = pat_data
         elif isinstance(data, dict):
             # Assert that both 'input' and 'icd' keys are present
             assert "input" in data, "The given data is missing 'input' key."

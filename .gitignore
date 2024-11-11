@@ -3,3 +3,5 @@
 model/*
 testing/input/*
 testing/output/*
+slurm*
+genetic_testing*

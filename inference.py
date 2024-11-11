@@ -16,8 +16,7 @@ parser.add_argument("-o", "--output", required = True, help="directory to output
 parser.add_argument("-model_dir", "--model_dir", required = False, help="directory to model folder")
 args = parser.parse_args()
 #Tokenizer
-# tokenizer_id = "Llama3_1/Meta-Llama-3.1-8B-Instruct" # Replace your tokenizer llama directory here
-tokenizer_id = '/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct'
+tokenizer_id = '' # replace your Llama 3.1 8B directory here
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
 
 def generate_prompt(data_point):
@@ -80,11 +79,11 @@ def read_text(input_file):
             for pat_data in data:
                 # Assert that the variable is a dictionary
                 assert isinstance(pat_data, dict), "The given data is not a dictionary."  
-                # Assert that both 'input', 'icd', 'patid' keys are present
+                # Assert that both 'input', 'icd', 'mrn' keys are present
                 assert "input" in pat_data, "The given data is missing 'input' key."
                 assert "icd" in pat_data, "The given data is missing 'icd' key."
-                assert "patid" in pat_data, "The given data is missing 'patid' key."
-                input_dict[file_name + "_" + pat_data['patid']] = pat_data
+                assert "mrn" in pat_data, "The given data is missing 'mrn' key."
+                input_dict[file_name + "_" + pat_data['mrn']] = pat_data
         elif isinstance(data, dict):
             # Assert that both 'input' and 'icd' keys are present
             assert "input" in data, "The given data is missing 'input' key."
@@ -97,9 +96,9 @@ def main():
     ##set up model
     #Model
     if args.model_dir:
-        model_id = args.model_dir
+        model_id = args.model_dir + '/model/'
     else:
-        model_id = os.getcwd() + '/model/'
+        model_id = os.getcwd() + '/model/RareDAI/model/'
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         torch_dtype=torch.bfloat16,

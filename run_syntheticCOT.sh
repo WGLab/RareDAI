@@ -25,4 +25,4 @@ fi
 
 python generate_syntheticCOT.py -i "$input" -o "$output"
 
-#sbatch -p gpuq --gres=gpu:a100:4 --cpus-per-gpu=3 --mem-per-cpu=50G --time=2-00:00:00 --profile=all --export=ALL --wrap="bash run_syntheticCOT.sh -i /home/nguyenqm/projects/Genetic_Testing/gene_training_data.json -o /home/nguyenqm/projects/github/rareDAI/gene_training_data_cot.json"
+#sbatch -p gpuq --gres=gpu:a100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --time=2-00:00:00 --profile=all --export=ALL --wrap="bash run_syntheticCOT.sh -i /home/nguyenqm/projects/Genetic_Testing/gene_training_data.json -o /home/nguyenqm/projects/github/RareDAI/gene_training_data_cot.json"

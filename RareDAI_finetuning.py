@@ -96,8 +96,7 @@ def main():
                                             torch_dtype=torch.bfloat16, device_map = 'auto')
     model.resize_token_embeddings(len(tokenizer)) ## go along with tokenizer.pad_token is None
     model.config.pad_token_id = tokenizer.pad_token_id
-    c= datetime.now()
-    out_dir = os.getcwd() + '/genetic_testing_llm_' + str(c)
+    out_dir = os.getcwd() + '/model/RareDAI/'
     os.makedirs(out_dir, exist_ok=True)
     out_dir_model = out_dir + '/model'
     with open(out_dir + '/params.txt', 'w') as f:
@@ -107,8 +106,8 @@ def main():
         output_dir=out_dir,
         warmup_ratio=0.3,
         optim="adamw_torch_fused",# use fused adamw optimizer, default parameters
-        per_device_train_batch_size=1, #1
-        gradient_accumulation_steps=28, #4
+        per_device_train_batch_size=2, #1
+        gradient_accumulation_steps=20, #4
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={'use_reentrant': False},
         logging_strategy="steps",
@@ -128,21 +127,21 @@ def main():
         push_to_hub=False,
         num_train_epochs=10,
     )
-    LORA_R = 128 #128
-    LORA_ALPHA = 256 #256
-    LORA_DROPOUT= 0.05
-    LORA_TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj","gate_proj", "up_proj","down_proj","lm_head"]
-    model = prepare_model_for_kbit_training(model)
-    config = LoraConfig(
-        r=LORA_R,
-        lora_alpha=LORA_ALPHA,
-        target_modules=LORA_TARGET_MODULES,
-        lora_dropout=LORA_DROPOUT,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model.gradient_checkpointing_enable()
-    model = get_peft_model(model, config)
+    # LORA_R = 128 #128
+    # LORA_ALPHA = 256 #256
+    # LORA_DROPOUT= 0.05
+    # LORA_TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj","gate_proj", "up_proj","down_proj","lm_head"]
+    # model = prepare_model_for_kbit_training(model)
+    # config = LoraConfig(
+    #     r=LORA_R,
+    #     lora_alpha=LORA_ALPHA,
+    #     target_modules=LORA_TARGET_MODULES,
+    #     lora_dropout=LORA_DROPOUT,
+    #     bias="none",
+    #     task_type="CAUSAL_LM",
+    # )
+    # model.gradient_checkpointing_enable()
+    # model = get_peft_model(model, config)
     trainer=Trainer(
         model=model,
         args=training_args,

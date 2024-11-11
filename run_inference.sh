@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=rareDAI_inference
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100:2
 #SBATCH --cpus-per-gpu=3
 #SBATCH --mem=400G
 #SBATCH --mem-per-cpu=100G
@@ -39,4 +39,4 @@ else
     # If -model_dir is provided, include it in the command
     python inference.py -i "$input" -o "$output" -model_dir "$model_dir"
 fi
-#sbatch -p gpuq --gres=gpu:a100:1 --cpus-per-gpu=3 --mem-per-cpu=50G --profile=all --export=ALL --wrap="bash run_inference.sh -i testing/input/ -o testing/output/"
+#sbatch -p gpuq --gres=gpu:a100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --profile=all --export=ALL --wrap="bash run_inference.sh -i testing/input/ -o testing/output/"
