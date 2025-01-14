@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description="Genetic Testing Recommender (Gene 
 parser.add_argument("-i", "--input", required = True, help="directory to input file without COT")
 parser.add_argument("-o", "--output", required = True, help="directory to output file with generated COT")
 args = parser.parse_args()
-model_id = "" # Please replace with your Llama 70B Tokenizer folder
+model_id = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-70B-Instruct" # Please replace with your Llama 70B Tokenizer folder
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
@@ -30,14 +30,43 @@ def generate_prompt(data_point):
     assert "icd" in data_point, "The given data is missing 'icd' keys."  
     #assert "phenotypes" in data, "The given data is missing 'phenotypes' keys." 
     assert "output" in data_point, "The given data is missing 'output' keys." 
+    # if data_point['output'] == 'gene panel':
+    #     label1 = 'gene panel'
+    #     label2 = 'genome sequencing'
+    # else:
+    #     label1 = 'genome sequencing'
+    #     label2 = 'gene panel'
+    # instruction = "You are a genetic counselor. Based on the provided definitions, explain why the recommended test is the most suitable choice for this patient. Be concise, accurate, and avoid fabricating any details.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
+    # question = f"""Explain why the recommended test, {data_point['output']}, is the best choice for the patient described in the following input. Build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients using all the given ICD-10 diagnoses and clinical note. Focus on whether the patient has distinct clinical features and a medical history or family history suggesting specific conditions (favoring a gene panel) or presents with unclear symptoms needing comprehensive investigation (favoring genome sequencing). Input:\n"""
+    # base_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+    # {system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+    # {user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+    
+    # """
+    # prompt = base_prompt.format(system_prompt = instruction,
+    #                             #user_prompt = question + "|==|Phenotypes|==|\n" + data_point['hpo'] + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
+    #                             user_prompt = question + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
+    #                             )
     if data_point['output'] == 'gene panel':
         label1 = 'gene panel'
         label2 = 'genome sequencing'
     else:
         label1 = 'genome sequencing'
         label2 = 'gene panel'
-    instruction = "You are a genetic counselor. Based on the provided definitions, explain why the recommended test is the most suitable choice for this patient. Be concise, accurate, and avoid fabricating any details.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
-    question = f"""Explain why the recommended test, {data_point['output']}, is the best choice for the patient described in the following input. Build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients using all the given ICD-10 diagnoses and clinical note. Focus on whether the patient has distinct clinical features and a medical history or family history suggesting specific conditions (favoring a gene panel) or presents with unclear symptoms needing comprehensive investigation (favoring genome sequencing). Input:\n"""
+    #instruction = "You are a genetic counselor! Given the following definitions, answer the question concisely and don't make up any random answer.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Whole exome or whole genome sequencing is often more cost- and time-effective than performing multiple single gene or panel tests."
+    instruction = "You are a genetic counselor adhering to the standards and guidelines set by the American College of Medical Genetics (ACMG). Based on the provided definitions, explain why the recommended test is the most suitable choice for this patient. Be concise, accurate, and avoid fabricating any details.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
+    #question = f"""Explain why the recommended test, {data_point['output']}, is the best choice for the patient described in the following clinical note. Consider the given ICD diagnosis and clinical note to build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients. Focus on whether the patient has distinct clinical features and a medical history or family history suggesting specific conditions (favoring a gene panel) or presents with unclear symptoms needing comprehensive investigation (favoring genome sequencing). Input:\n"""
+    question = f"""Explain why we recommend {data_point['output']} as the best choice for the patient described in the following clinical note. Build a detailed, expert, and logical step-by-step reasoning explanation for why {data_point['output']} is strongly preferable to {label2} in this case to convince our physicians and patients from all the given ICD-10 diagnoses and clinical note. You should rely on the given questions to build your logical answer. 
+    1. Is the patient presenting with congenital abnormalities or developmental disorders? According to ACMG guidelines, exome or genome sequencing should be considered as a first or second-tier test for these conditions to provide a comprehensive diagnostic approach.
+    2. Does the patient’s condition or suspected genetic disorder involve multiple genes or a complex phenotype that cannot be confidently explained by a single-gene or targeted panel approach? If yes, ACMG guidelines support the use of exome or genome sequencing for broader evaluation and potential reanalysis over time.
+    3. Does the patient have distinctive clinical features, biochemical findings, or imaging results that suggest a particular genetic condition or set of conditions? If yes, a targeted gene panel may be the most efficient approach. If no, exome or genome sequencing might be more appropriate to uncover a broader range of potential genetic causes.
+    4. Does the patient have a high likelihood of a specific genetic disorder based on family history? If yes, ACMG guidelines recommend starting with targeted testing or a gene panel to efficiently identify causative variants.
+    5. Has the patient undergone prior genetic testing or any diagnostic tools, and were the results inconclusive or insufficient for diagnosis? If yes, exome or genome sequencing should be considered to provide a broader diagnostic perspective. If no, a gene panel may be the first step, especially if the phenotype suggests a specific set of conditions.
+    6. Is the patient in an urgent care setting, such as the NICU or ICU, requiring rapid results for clinical management?  If yes, rapid exome or genome sequencing is preferred for its ability to quickly evaluate most protein-coding genes at once.
+    7. Are there cost or accessibility concerns that might limit the use of exome or genome sequencing as a first-tier test? If yes, ACMG guidelines suggest that a targeted approach, such as a gene panel, may be a pragmatic starting point while considering sequencing as a follow-up.
+    Input:\n"""
     base_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
     {system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -45,9 +74,9 @@ def generate_prompt(data_point):
     {user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
     
     """
+    #{model_answer}<|eot_id|><|end_of_text|>"""
     prompt = base_prompt.format(system_prompt = instruction,
-                                #user_prompt = question + "|==|Phenotypes|==|\n" + data_point['hpo'] + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
-                                user_prompt = question + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
+                                user_prompt = question + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['summary'],
                                 )
     return prompt
 def read_text(input_file):

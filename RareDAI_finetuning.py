@@ -3,14 +3,7 @@ from datasets import load_dataset
 import datasets
 import torch
 from tokenizers import AddedToken, pre_tokenizers
-from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from peft import (
-    LoraConfig,
-    get_peft_model,
-    get_peft_model_state_dict,
-    prepare_model_for_kbit_training,
-)
-from peft import PeftModel
+from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModelForCausalLM
 from transformers import DataCollatorForSeq2Seq
 torch.backends.cuda.matmul.allow_tf32 = True
 import pandas as pd
@@ -21,7 +14,7 @@ import gc, json
 gc.collect()
 torch.cuda.empty_cache()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-tokenizer_name = "" # Please provide the directory to the foundation Llama 3.1 model
+tokenizer_name = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct" # Please provide the directory to the foundation Llama 3.1 model
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
@@ -53,8 +46,17 @@ def generate_prompt(data_point):
     assert "icd" in data_point, "The given data is missing 'icd' keys."  
     assert "cot" in data_point, "The given data is missing 'cot' keys." # this is generated from Stage 2
     assert "output" in data_point, "The given data is missing 'output' keys." 
-    instruction = "You are a genetic counselor! Given the following definitions, answer the question concisely and don't make up any random answer.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
-    question = "What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response.\nInput: "
+    instruction = "You are a genetic counselor adhering to the standards and guidelines set by the American College of Medical Genetics (ACMG). Given the following definitions, answer the question concisely and don't make up any random answer.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
+    #question = "What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response.\nInput: "
+    question = """What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response. You should rely on the given questions below to build your logical answer.\n
+    1. Is the patient presenting with congenital abnormalities or developmental disorders? According to ACMG guidelines, exome or genome sequencing should be considered as a first or second-tier test for these conditions to provide a comprehensive diagnostic approach.
+    2. Does the patient’s condition or suspected genetic disorder involve multiple genes or a complex phenotype that cannot be confidently explained by a single-gene or targeted panel approach? If yes, ACMG guidelines support the use of exome or genome sequencing for broader evaluation and potential reanalysis over time.
+    3. Does the patient have distinctive clinical features, biochemical findings, or imaging results that suggest a particular genetic condition or set of conditions? If yes, a targeted gene panel may be the most efficient approach. If no, exome or genome sequencing might be more appropriate to uncover a broader range of potential genetic causes.
+    4. Does the patient have a high likelihood of a specific genetic disorder based on family history? If yes, ACMG guidelines recommend starting with targeted testing or a gene panel to efficiently identify causative variants.
+    5. Has the patient undergone prior genetic testing or any diagnostic tools, and were the results inconclusive or insufficient for diagnosis? If yes, exome or genome sequencing should be considered to provide a broader diagnostic perspective. If no, a gene panel may be the first step, especially if the phenotype suggests a specific set of conditions.
+    6. Is the patient in an urgent care setting, such as the NICU or ICU, requiring rapid results for clinical management?  If yes, rapid exome or genome sequencing is preferred for its ability to quickly evaluate most protein-coding genes at once.
+    7. Are there cost or accessibility concerns that might limit the use of exome or genome sequencing as a first-tier test? If yes, ACMG guidelines suggest that a targeted approach, such as a gene panel, may be a pragmatic starting point while considering sequencing as a follow-up.
+    Input:\n"""
     base_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
     {system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -75,13 +77,17 @@ def generate_and_tokenize_prompt(data_point): ## formulate the input text templa
 def defining_args():
     return f"""
     Any notes here to differentiate the different runs. Not important!
+    8B full params
+    7 questions during CoT generation with ACMG guidelines
+    Full VERSION
+    include 7 questions during finetuning
     """
 def main():
     """
     Set training parameters and train model
     """
-    train_data = load_dataset("json", data_files="", split = 'train') # Please provide the directory to your training data with synthetic CoT
-    val_data = load_dataset("json", data_files="", split = 'train') # Please provide the directory to your validation data with synthetic CoT
+    train_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_cot.json", split = 'train') # Please provide the directory to your training data with synthetic CoT
+    val_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_cot.json", split = 'train') # Please provide the directory to your validation data with synthetic CoT
     print(generate_prompt(train_data[0]))
 
     train_data = (
@@ -90,13 +96,14 @@ def main():
     val_data = (
         val_data.map(generate_and_tokenize_prompt)
     )
-    model_name = "" # Please provide the directory to the foundation Llama 3.1 model
+    model_name = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct" # Please provide the directory to the foundation Llama 3.1 model
     model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, #quantization_config=quantization_config,
                                             attn_implementation="flash_attention_2",
                                             torch_dtype=torch.bfloat16, device_map = 'auto')
     model.resize_token_embeddings(len(tokenizer)) ## go along with tokenizer.pad_token is None
     model.config.pad_token_id = tokenizer.pad_token_id
-    out_dir = os.getcwd() + '/model/RareDAI/'
+    #out_dir = os.getcwd() + '/model/RareDAI/'
+    out_dir = os.getcwd() + '/model/RareDAI_ACMGquestionsCOT_written/'
     os.makedirs(out_dir, exist_ok=True)
     out_dir_model = out_dir + '/model'
     with open(out_dir + '/params.txt', 'w') as f:
