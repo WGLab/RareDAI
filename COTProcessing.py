@@ -61,7 +61,7 @@ class COTProcessing:
         return {'cot':prediction, 'label':label}
 
 ## ICD10 PROCESSING
-def ICDprocessing:
+class ICDprocessing:
     def __init__(self):
         self.icd102phecode = self.convert_phecode()
     def convert_phecode():
@@ -76,12 +76,12 @@ def ICDprocessing:
     def generate_phecode(code):
         if code[:3] in self.icd102phecode.keys():
             phecode = self.icd102phecode[code[:3]]
-            else:
-                return np.nan
-            if phecode.lower() == "other tests":
-                return code
-            else:
-                return phecode
+        else:
+            return np.nan
+        if phecode.lower() == "other tests":
+            return code
+        else:
+            return phecode
     def output_format(icd_list):
         if len(icd_list) > 0:
             return " | ".join(icd_list)

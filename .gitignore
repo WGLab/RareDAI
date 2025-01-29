@@ -5,3 +5,7 @@ testing/input/*
 testing/output/*
 slurm*
 genetic_testing*
+*.json
+RareDAI_finetuning2.py
+RareDAI_finetuning3.py
+run_RareDAI2.sh

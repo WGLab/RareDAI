@@ -3,7 +3,14 @@ from datasets import load_dataset
 import datasets
 import torch
 from tokenizers import AddedToken, pre_tokenizers
-from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModelForCausalLM
+from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    get_peft_model_state_dict,
+    prepare_model_for_kbit_training,
+    PeftModel
+)
 from transformers import DataCollatorForSeq2Seq
 torch.backends.cuda.matmul.allow_tf32 = True
 import pandas as pd
@@ -47,7 +54,7 @@ def generate_prompt(data_point):
     assert "cot" in data_point, "The given data is missing 'cot' keys." # this is generated from Stage 2
     assert "output" in data_point, "The given data is missing 'output' keys." 
     instruction = "You are a genetic counselor adhering to the standards and guidelines set by the American College of Medical Genetics (ACMG). Given the following definitions, answer the question concisely and don't make up any random answer.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
-    #question = "What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response.\nInput: "
+    #question = "What genetic testing do you recommend to the patient in the following input? Please return 'gene panel' or 'genome sequencing' as the final response.\nInput: "
     question = """What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response. You should rely on the given questions below to build your logical answer.\n
     1. Is the patient presenting with congenital abnormalities or developmental disorders? According to ACMG guidelines, exome or genome sequencing should be considered as a first or second-tier test for these conditions to provide a comprehensive diagnostic approach.
     2. Does the patient’s condition or suspected genetic disorder involve multiple genes or a complex phenotype that cannot be confidently explained by a single-gene or targeted panel approach? If yes, ACMG guidelines support the use of exome or genome sequencing for broader evaluation and potential reanalysis over time.
@@ -64,8 +71,9 @@ def generate_prompt(data_point):
     {user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
     {model_answer}<|eot_id|><|end_of_text|>"""
-    #{model_answer}<|eot_id|><|end_of_text|>"""
+
     prompt = base_prompt.format(system_prompt = instruction,
+                                #user_prompt = question + "\n|==|Phenotypes|==|\n" + data_point['hpo'] + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
                                 user_prompt = question + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
                                 model_answer = "|==|Explanation|==|\n" + data_point['cot'].strip() + "\n|==|Response|==|\n" + data_point['output']
                                 )
@@ -78,16 +86,15 @@ def defining_args():
     return f"""
     Any notes here to differentiate the different runs. Not important!
     8B full params
-    7 questions during CoT generation with ACMG guidelines
-    Full VERSION
-    include 7 questions during finetuning
+    ICD + note + CoT (no phenotype)
+    summary
     """
 def main():
     """
     Set training parameters and train model
     """
-    train_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_cot.json", split = 'train') # Please provide the directory to your training data with synthetic CoT
-    val_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_cot.json", split = 'train') # Please provide the directory to your validation data with synthetic CoT
+    train_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_summary_cot.json", split = 'train') # Please provide the directory to your training data with synthetic CoT
+    val_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_val_data_summary_cot.json", split = 'train') # Please provide the directory to your validation data with synthetic CoT
     print(generate_prompt(train_data[0]))
 
     train_data = (
@@ -97,13 +104,20 @@ def main():
         val_data.map(generate_and_tokenize_prompt)
     )
     model_name = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct" # Please provide the directory to the foundation Llama 3.1 model
+    
+    # quantization_config = BitsAndBytesConfig(
+    #         load_in_4bit=True,
+    #         bnb_4bit_use_double_quant=True,
+    #         bnb_4bit_quant_type="nf4", # quantization methods
+    #         bnb_4bit_compute_dtype=torch.bfloat16) # option: load_8bit
+    
     model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, #quantization_config=quantization_config,
                                             attn_implementation="flash_attention_2",
                                             torch_dtype=torch.bfloat16, device_map = 'auto')
     model.resize_token_embeddings(len(tokenizer)) ## go along with tokenizer.pad_token is None
     model.config.pad_token_id = tokenizer.pad_token_id
     #out_dir = os.getcwd() + '/model/RareDAI/'
-    out_dir = os.getcwd() + '/model/RareDAI_ACMGquestionsCOT_written/'
+    out_dir = os.getcwd() + '/model/RareDAI_ACMGquestionsCOT_8B_Summary_ICD/'
     os.makedirs(out_dir, exist_ok=True)
     out_dir_model = out_dir + '/model'
     with open(out_dir + '/params.txt', 'w') as f:
@@ -113,8 +127,8 @@ def main():
         output_dir=out_dir,
         warmup_ratio=0.3,
         optim="adamw_torch_fused",# use fused adamw optimizer, default parameters
-        per_device_train_batch_size=2, #1
-        gradient_accumulation_steps=20, #4
+        per_device_train_batch_size=4, #1
+        gradient_accumulation_steps=4, #4
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={'use_reentrant': False},
         logging_strategy="steps",

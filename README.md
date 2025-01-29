@@ -29,31 +29,51 @@ python -m ipykernel install --user --name=raredai
 
 In the command above, we utilize the accelerate package for model sharding. PEFT package is used for efficient fine-tuning like LORA. bitsandbytes package is used for model quantization. Please pip uninstalll package and pip install package if you encounter any running issues.
 
+Our top performing Llama models are:
+1) Fine-tuned 8B (16bit) with CoT + ICD10 on summarized clinical notes.
+2) Fine-tuned 70B (4bit QLoRA) with CoT + ICD10 + Phenotypes on raw clinical notes.
+3) Fine-tuned 8B (16bit) with CoT + ICD10 on raw clinical notes.
+
 ## Set Up Model, Input, and Output directories
 1. Models:
-    - To use LLaMA 3.1 8B model, please apply for access first and download it into the local drive. [Download here](https://www.llama.com/llama-downloads/)
+    - To use LLaMA 3.1 8B (or 70B) model, please apply for access first and download it into the local drive. [Download here](https://www.llama.com/llama-downloads/)
     - Save model in the Llama3_1/Meta-Llama-3.1-8B-Instruct (it should contain the tokenizer and model weights)
-    - Download the updated fine-tuning in the release section on GitHub (Latest version: v1.0.0)
-    - Save model weights in the ./model/
 2. Input:
-    - Input files should be json files including "input", "icd", "mrn" for inference and additionally "output" if fine-tuning.
+    - Input files should be json files including "input", "hpo", "icd", "mrn" for inference and additionally "output" if fine-tuning. You will need to generate synthetic summary ("summary") and Chain-of-Thought (CoT).
     - Input file can be either a single json file or a whole directory containing all input json files
 3. Download additional Database
-    - Phecode ICD10: download phecode_definitions1.2.csv and Phecode_map_v1_2_icd10_beta.csv from the [link](https://phewascatalog.org/phecodes_icd10).
+    - Phecode ICD10: download phecode_definitions1.2.csv and Phecode_map_v1_2_icd10_beta.csv from the [link](https://phewascatalog.org/phecodes_icd10). We also provide these databases in this GitHub.
+
+Due to the protected health information, we cannot be shared our fine-tuned models publicly. However, we provide the codes and detailed instructions so that you should be able to replicate our processes with minimal efforts.
 
 ## Fine-tuning
-The fine-tuning process is divided into three stages:
+The fine-tuning process is divided into four stages:
 1. Data collection: please process and clean your own data before fine-tuning/inference. You can refer our paper to see how our notes are selected. Save all the features (input, icd, mrn, phenotypes, output) in the JSON file for each patient.
     - Make sure your ICD10 are converted to Phecodes and separated by "|". You can use some codes in our script to process the data.
-    - Example: Phecode A | Phecode B | Phecode C
-2. Generate synthetic CoT for training and validation datasets.
+    - Example: Intestinal infection | Fractures | joint disorders and dislocations; trauma-related
+2. Generate summary for training and validation datasets (only required if you want to fine-tune models with summary note).
+    - Please modify the necessary SLURM arguments in [run_summary.sh](https://github.com/WGLab/RareDAI/blob/main/run_summary.sh) to run [generate_summary.py](https://github.com/WGLab/RareDAI/blob/main/generate_summary.py)
+    - You should provide the directory where your input JSON-formatted files are located and the file directory of the output in which you want to save the synthetic data. Each of your resulting JSON data should have an additional "summary" key (including testing data). Make sure your input file has the correct keys like mentioned above.
+    - Please replace line 17 in the Python script with the foundation Llama 3.1 70B directory.
+
+Up to this point, you should split your own data into train:validation:test (ratio of 6:2:2). You only need to generate synthetic CoT for your train and validation data. You can fine-tune model either on raw clinical notes (data_point['input']) OR summary notes you generated above (data_point['summary]). 
+
+3. Generate synthetic CoT for training and validation datasets.
     - Please modify the necessary SLURM arguments in [run_syntheticCOT.sh](https://github.com/WGLab/RareDAI/blob/main/run_syntheticCOT.sh) to run [generate_syntheticCOT.py](https://github.com/WGLab/RareDAI/blob/main/generate_syntheticCOT.py)
-    - You should provide the directory where your training/validation JSON-formatted files are located as the input and the file directory of the output in which you want to save the synthetic data. Each of your JSON data should have an additional "cot" key (except testing data). Make sure your input file has the correct keys like mentioned above.
-    - Please replace the Python script at line 17 with the foundation Llama 3.1 directory.
-3. Fine-tune the model with generated synthetic CoT from stage 2.
+    - You should provide the directory where your training/validation JSON-formatted files are located as the input and the file directory of the output in which you want to save the synthetic data. Each of your resulting JSON data should have an additional "cot" key (except testing data). Make sure your input file has the correct keys like mentioned above.
+    - Please replace line 18 in the Python script with the foundation Llama 3.1 70B directory.
+    - Make sure to include phenotypes or phecodes (converted ICD10) in your prompt accordingly. If you want to include just ICD-10 (like our top performing 8B model) then use line 57. If you want to include both features (like our top performing 70B) then use 55.
+    - If you want to fine-tune the models on raw clinical notes, indicate "input" in your data_point['input'] in line 55-57.
+    - If you want to fine-tune the models on summary clinical notes, indicate "summary" in your data_point['summary'] in the line 55-57.
+4. Fine-tune the model with generated synthetic CoT from stage 3.
     - Please modify the necessary SLURM arguments in [run_RareDAI.sh](https://github.com/WGLab/RareDAI/blob/main/run_RareDAI.sh) to run [RareDAI_finetuning.py](https://github.com/WGLab/RareDAI/blob/main/RareDAI_finetuning.py)
-    - Please replace the Python script at line 24, 83, 84, 93 with the corresponding directory.
+    - Please replace the Python script at line 24, 96, 97, 106, 120 with the corresponding directory.
+    - Similarly to step 3, make sure to include phenotypes and phecodes accordingly to your model of interest (change the line 76-77) and adjust data_point['input'] or data_point['summary'] correctly.
+
+* If you want to fine-tune 70B model, you may need to use QLoRA 4bit + PEFT to reduce the size of the models even though the higher precisions and full-parameter may achieve better results. You should uncomment quantization_config (line 108-114) and QLoRA setup (line 151-165).
+
 * If you're encountering CUDA memory issues, it’s likely due to large input texts exceeding your system’s capacity for model training. To address this issue, consider either increasing the number of GPUs and CPUs or adjusting training parameters by reducing the batch size or increasing gradient accumulation steps.
+
 
 ## Inference
 Please fine-tune your own model first. Please follow the inference section of the [inference.py](https://github.com/WGLab/RareDAI/blob/main/inference.py) to run your model.
