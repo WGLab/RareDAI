@@ -23,9 +23,8 @@ if [[ -z "$input" || -z "$output" ]]; then
     usage
 fi
 
-#python generate_syntheticCOT.py -i "$input" -o "$output"
 python generate_summary.py -i "$input" -o "$output"
 
-#sbatch -p gpu-xe9680q --gres=gpu:h100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --time=3-00:00:00 --profile=all --export=ALL --wrap="bash run_syntheticCOT.sh -i /home/nguyenqm/projects/github/RareDAI/gene_training_data_summary.json -o /home/nguyenqm/projects/github/RareDAI/gene_training_data_summary_cot.json"
-#sbatch -p gpu-xe9680q --gres=gpu:h100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --time=3-00:00:00 --profile=all --export=ALL --wrap="bash run_syntheticCOT.sh -i /home/nguyenqm/projects/github/RareDAI/gene_val_data_summary.json -o /home/nguyenqm/projects/github/RareDAI/gene_val_data_summary_cot.json"
+#sbatch -p gpu-xe9680q --gres=gpu:h100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --time=3-00:00:00 --profile=all --export=ALL --wrap="bash run_summary.sh -i /home/nguyenqm/projects/github/RareDAI/gene_training_data.json -o /home/nguyenqm/projects/github/RareDAI/gene_training_data_summary.json"
+#sbatch -p gpu-xe9680q --gres=gpu:h100:2 --cpus-per-gpu=3 --mem-per-cpu=50G --time=3-00:00:00 --profile=all --export=ALL --wrap="bash run_summary.sh -i /home/nguyenqm/projects/github/RareDAI/gene_val_data.json -o /home/nguyenqm/projects/github/RareDAI/gene_val_data_summary.json"
 
