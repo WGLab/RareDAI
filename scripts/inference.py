@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser(description="Genetic Testing Recommender (Gene 
 parser.add_argument("-i", "--input", required = True, help="directory to input folder")
 parser.add_argument("-o", "--output", required = True, help="directory to output folder")
 parser.add_argument("-model_dir", "--model_dir", required = False, help="directory to model folder")
+parser.add_argument("-lora", "--lora", required = False, help="directory to LoRA model folder")
 args = parser.parse_args()
 #Tokenizer
 tokenizer_id = '' # replace your Llama 3.1 8B directory here
@@ -106,33 +107,49 @@ def read_text(input_file):
 def main():
     ##set up model
     #Model
-    if args.model_dir:
-        model_id = args.model_dir + '/model/'
+    if "json" in args.input:
+        with open(args.0)
+    test_data = load_dataset("json", data_files=args.input, split = 'train')
+    if args.lora:
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True,
+                                            llm_int8_threshold=200.0, llm_int8_enable_fp32_cpu_offload=True)
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
+    elif args.qlora:
+        quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4", # quantization methods
+                bnb_4bit_compute_dtype=torch.bfloat16) # option: load_8bit
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
     else:
-        model_id = os.getcwd() + '/model/RareDAI/model/'
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True,# quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     tokenizer.padding_side = "left"
     model.resize_token_embeddings(len(tokenizer)) ## go along with tokenizer.pad_token is None
     model.config.pad_token_id = tokenizer.pad_token_id # setting pad token id for model
+    model = PeftModel.from_pretrained(model, model_id+"model/")
     model.eval()
     print('start rareDAI')
+    pred = []
     input_dict = read_text(args.input)
-    for file_name, text in tqdm(input_dict.items()):
-        print(file_name)
-        # generate raw response
-        raw_output = generate_output(model, text)
-        # clean up response
-        # save output
-        os.makedirs(args.output, exist_ok=True)
-        output_name = args.output+"/"+file_name+"_rareDAI.txt"
-        with open(output_name, 'w') as f:
-            f.write(raw_output)
-        print(raw_output)
+    for t in tqdm(test_data):
+        output = generate_output(model, t)
+        pred.append(output)
+    with open(model_id + f'prediction_{out_file_pattern}_{args.index}.json', 'w') as f:
+        json.dump(pred,f)
+    pred_clean = []
+    for p in pred:
+        answer = p.split("\n")[-1]
+        answer = answer.replace("|==|Response|==|","").strip()
+        if len(answer) == 0 or (answer != 'genome sequencing' and answer != 'gene panel'):
+            answer = first_pattern(p.lower().strip(), 'gene panel', 'genome sequencing')
+        pred_clean.append(answer)
 if __name__ == "__main__":
     main()

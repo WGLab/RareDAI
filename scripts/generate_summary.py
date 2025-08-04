@@ -13,8 +13,10 @@ parser = argparse.ArgumentParser(description="Clinical Note Summarizer",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--input", required = True, help="directory to input file with raw clinical notes")
 parser.add_argument("-o", "--output", required = True, help="directory to output file with generated note summary")
+parser.add_argument("-model_id", "--model_id", required = False, help="directory to model")
 args = parser.parse_args()
-model_id = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-70B-Instruct" # Please replace with your Llama 70B Tokenizer folder
+#model_id = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-70B-Instruct" # Please replace with your Llama 70B Tokenizer folder
+model_id = args.model_id
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
@@ -33,7 +35,7 @@ def generate_prompt(data_point):
     Previous Assessments: Describe any past genetic evaluations or screenings, including the results and any relevant interpretations.
     Family History: Include any known instances of genetic or hereditary conditions in the family, specifying relationships, affected members, and known genetic mutations.
     Medical History: Provide a detailed personal medical history, including known medical conditions, previous diagnoses, and treatments received.
-    Symptoms and Signs: List all symptoms and physical signs observed, noting their onset, duration, and progression.
+    Symptoms and Signs: List all medical phenotypes, symptoms and physical signs observed, noting their onset, duration, and progression.
     Diagnostic Tests (where available): Share results and findings from all diagnostic tests performed descibed in the note such as: Physical examinations (if available), Blood tests (e.g., CBC, biochemical markers), Biochemical tests (e.g., metabolic panels, enzyme activity tests), Imaging studies (e.g., MRI, CT, ultrasound), Audiological or visual assessments, and Genetic testing results (e.g., karyotyping, exome or genome sequencing).
     Current Assessment: Provide complete ongoing evaluations or preliminary diagnoses. This is the most important information for downstream genetic assessment.
     Environmental and Lifestyle Factors: Describe relevant environmental exposures, lifestyle habits, or occupational risks that may influence genetic predispositions.
@@ -49,7 +51,7 @@ def generate_prompt(data_point):
     """
     #{model_answer}<|eot_id|><|end_of_text|>"""
     prompt = base_prompt.format(system_prompt = instruction,
-                                user_prompt = question + "\n|==|Note|==|\n" + data_point['input'],
+                                user_prompt = question + "\n|==|Note|==|\n" + data_point['query'] #data_point['input'],
                                 )
     return prompt
 def read_text(input_file):
@@ -71,12 +73,7 @@ def read_text(input_file):
                 data = json.load(r)
             if isinstance(data, list): # all patients in one file
                 for pat_data in data:
-                    # Assert that the variable is a dictionary
-                    assert isinstance(pat_data, dict), "The given data is not a dictionary."  
-                    # Assert that both 'input', 'icd', 'mrn' keys are present
-                    assert "input" in pat_data, "The given data is missing 'input' key."
-                    assert "mrn" in pat_data, "The given data is missing 'mrn' key."
-                    input_dict[file_name + "_" + pat_data['mrn']] = pat_data
+                    input_dict[pat_data['mrn']] = pat_data
             elif isinstance(data, dict):
                 # Assert that both 'input' and 'icd' keys are present
                 assert "input" in data, "The given data is missing 'input' key."
@@ -109,14 +106,14 @@ def generate_output(data_point):
     return(output)
 def main():
     input_dict = read_text(args.input)
-    train_summary = []
+    summary = []
     for file_name, text in tqdm(input_dict.items()):
-        print(file_name)
+        #print(file_name)
         pred = generate_output(text)
         text['summary'] = pred
-        train_summary.append(text)
+        summary.append(text)
     with open(args.output, 'w' ) as f:
-        json.dump(train_summary, f)
+        json.dump(summary, f)
     
 if __name__ == "__main__":
     main()

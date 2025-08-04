@@ -11,18 +11,32 @@ from peft import (
     prepare_model_for_kbit_training,
     PeftModel
 )
+from pathlib import Path
 from transformers import DataCollatorForSeq2Seq
 torch.backends.cuda.matmul.allow_tf32 = True
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 from tqdm.auto import tqdm
-import gc, json
+import gc, json, argparse
 gc.collect()
 torch.cuda.empty_cache()
+parser = argparse.ArgumentParser(description="Chain of Thought Synthetic Generator",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument("-train_dir", "--train_dir", required = True, help="directory to training file with CoT")
+parser.add_argument("-val_dir", "--val_dir", required = False, default=None, help="directory to validation file with CoT")
+parser.add_argument("-o", "--output", required = False, help="directory to model output")
+parser.add_argument("-model_path", "--model_path", required = False, help="directory to model")
+parser.add_argument("-hpo", "--hpo", action="store_true", required = False, help="incorporate hpo")
+parser.add_argument("-icd", "--icd", action="store_true", required = False, help="incorporate icd")
+parser.add_argument("-cot", "--cot", action="store_true", required = False, help="incorporate cot")
+parser.add_argument("-summary", "--summary", action="store_true", required = False, help="incorporate summary")
+parser.add_argument("-lora", "--lora", action="store_true", required = False, help="LoRA 8B training")
+parser.add_argument("-qlora", "--qlora", action="store_true", required = False, help="QLoRA 4B training")
+args = parser.parse_args()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-tokenizer_name = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct" # Please provide the directory to the foundation Llama 3.1 model
-tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
+model_path = args.model_path
+tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 tokenizer.padding_side = "left"
@@ -54,7 +68,6 @@ def generate_prompt(data_point):
     assert "cot" in data_point, "The given data is missing 'cot' keys." # this is generated from Stage 2
     assert "output" in data_point, "The given data is missing 'output' keys." 
     instruction = "You are a genetic counselor adhering to the standards and guidelines set by the American College of Medical Genetics (ACMG). Given the following definitions, answer the question concisely and don't make up any random answer.\ngene panel: look for variants in more than one gene. This type of test is often used to pinpoint a diagnosis when a person has symptoms that may fit a wide array of conditions, or when the suspected condition can be caused by variants in many genes. Gene panel is suitable for any patients with distinctive clinical features, family history of a specific disorder, or indicative biochemistry, X ray, or complementary assays in a fast manner and less expensive than exome sequencing.\ngenome sequencing: analyze the bulk of an individual’s DNA to find genetic variations. Whole exome or whole genome sequencing is typically used when single gene or panel testing has not provided a diagnosis, or when the suspected condition or genetic cause is unclear. Genome sequencing is often more accurate and applicable for patients with multiple nonspecific concerns but takes longer to be done."
-    #question = "What genetic testing do you recommend to the patient in the following input? Please return 'gene panel' or 'genome sequencing' as the final response.\nInput: "
     question = """What genetic testing do you recommend to the patient in the following input? Please give a detailed explanation and return 'gene panel' or 'genome sequencing' as the final response. You should rely on the given questions below to build your logical answer.\n
     1. Is the patient presenting with congenital abnormalities or developmental disorders? According to ACMG guidelines, exome or genome sequencing should be considered as a first or second-tier test for these conditions to provide a comprehensive diagnostic approach.
     2. Does the patient’s condition or suspected genetic disorder involve multiple genes or a complex phenotype that cannot be confidently explained by a single-gene or targeted panel approach? If yes, ACMG guidelines support the use of exome or genome sequencing for broader evaluation and potential reanalysis over time.
@@ -64,6 +77,22 @@ def generate_prompt(data_point):
     6. Is the patient in an urgent care setting, such as the NICU or ICU, requiring rapid results for clinical management?  If yes, rapid exome or genome sequencing is preferred for its ability to quickly evaluate most protein-coding genes at once.
     7. Are there cost or accessibility concerns that might limit the use of exome or genome sequencing as a first-tier test? If yes, ACMG guidelines suggest that a targeted approach, such as a gene panel, may be a pragmatic starting point while considering sequencing as a follow-up.
     Input:\n"""
+    user_prompt = [question]
+    if args.hpo:
+        user_prompt.append("\n|==|Phenotypes|==|\n" + data_point['hpo'])
+    if args.icd:
+        user_prompt.append("\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'])
+    if args.summary:
+        user_prompt.append("\n|==|Note|==|\n" + data_point['summary'])
+    else:
+        user_prompt.append("\n|==|Note|==|\n" + data_point['input'])
+    user_prompt = "".join(user_prompt)
+
+    if args.cot:
+        model_answer = "|==|Explanation|==|\n" + data_point['cot'].strip() + "\n|==|Response|==|\n" + data_point['output']
+    else:
+        model_answer = "\n|==|Response|==|\n" + data_point['output']
+
     base_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
     {system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -73,9 +102,8 @@ def generate_prompt(data_point):
     {model_answer}<|eot_id|><|end_of_text|>"""
 
     prompt = base_prompt.format(system_prompt = instruction,
-                                #user_prompt = question + "\n|==|Phenotypes|==|\n" + data_point['hpo'] + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
-                                user_prompt = question + "\n|==|ICD-10 Diagnosis|==|\n" + data_point['icd'] + "\n|==|Note|==|\n" + data_point['input'],
-                                model_answer = "|==|Explanation|==|\n" + data_point['cot'].strip() + "\n|==|Response|==|\n" + data_point['output']
+                                user_prompt = user_prompt,
+                                model_answer = model_answer
                                 )
     return prompt
 def generate_and_tokenize_prompt(data_point): ## formulate the input text template and tokenize to numbers
@@ -86,16 +114,23 @@ def defining_args():
     return f"""
     Any notes here to differentiate the different runs. Not important!
     8B full params
-    ICD + note + CoT (no phenotype)
-    summary
+    HPO: {args.hpo}
+    ICD: {args.icd}
+    CoT: {args.cot}
+    Summary: {args.summary}
     """
 def main():
     """
     Set training parameters and train model
     """
-    train_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_training_data_summary_cot.json", split = 'train') # Please provide the directory to your training data with synthetic CoT
-    val_data = load_dataset("json", data_files="/home/nguyenqm/projects/github/RareDAI/gene_val_data_summary_cot.json", split = 'train') # Please provide the directory to your validation data with synthetic CoT
-    print(generate_prompt(train_data[0]))
+    train_data = load_dataset("json", data_files=args.train_dir, split = 'train') # Please provide the directory to your training data with synthetic CoT
+    if val_dir:
+        val_data = load_dataset("json", data_files=args.val_dir, split = 'train') # Please provide the directory to your validation data with synthetic CoT
+        do_eval = True
+    else:
+        val_data = None
+        do_eval = False
+    #print(generate_prompt(train_data[0]))
 
     train_data = (
         train_data.map(generate_and_tokenize_prompt)
@@ -104,21 +139,44 @@ def main():
         val_data.map(generate_and_tokenize_prompt)
     )
     model_name = "/mnt/isilon/wang_lab/shared/Llama3_1/Meta-Llama-3.1-8B-Instruct" # Please provide the directory to the foundation Llama 3.1 model
-    
-    # quantization_config = BitsAndBytesConfig(
-    #         load_in_4bit=True,
-    #         bnb_4bit_use_double_quant=True,
-    #         bnb_4bit_quant_type="nf4", # quantization methods
-    #         bnb_4bit_compute_dtype=torch.bfloat16) # option: load_8bit
-    
-    model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, #quantization_config=quantization_config,
-                                            attn_implementation="flash_attention_2",
-                                            torch_dtype=torch.bfloat16, device_map = 'auto')
+    if args.lora:
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True,
+                                            llm_int8_threshold=200.0, llm_int8_enable_fp32_cpu_offload=True)
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
+    elif args.qlora:
+        quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4", # quantization methods
+                bnb_4bit_compute_dtype=torch.bfloat16) # option: load_8bit
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True, quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
+    else:
+        model=AutoModelForCausalLM.from_pretrained(model_name,do_sample=True,# quantization_config=quantization_config,
+                                                attn_implementation="flash_attention_2",
+                                                torch_dtype=torch.bfloat16, device_map = 'auto')
+
     model.resize_token_embeddings(len(tokenizer)) ## go along with tokenizer.pad_token is None
     model.config.pad_token_id = tokenizer.pad_token_id
-    #out_dir = os.getcwd() + '/model/RareDAI/'
-    out_dir = os.getcwd() + '/model/RareDAI_ACMGquestionsCOT_8B_Summary_ICD/'
-    os.makedirs(out_dir, exist_ok=True)
+    if args.out_dir:
+        out_dir = args.output
+        os.makedirs(out_dir, exist_ok=True)
+    else:
+        # Get the current file's directory (i.e., RareDAI/scripts/)
+        current_dir = Path(__file__).resolve().parent
+        dt_string = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Go up one level to RareDAI/
+        project_root = current_dir.parent
+
+        # Define the path to the new folder
+        out_dir = project_root / f'ft_models' / f'RareDAI_{dt_string}'
+
+        # Create the folder
+        out_dir.mkdir(parents=True, exist_ok=True)
     out_dir_model = out_dir + '/model'
     with open(out_dir + '/params.txt', 'w') as f:
         f.write(defining_args())
@@ -127,7 +185,7 @@ def main():
         output_dir=out_dir,
         warmup_ratio=0.3,
         optim="adamw_torch_fused",# use fused adamw optimizer, default parameters
-        per_device_train_batch_size=4, #1
+        per_device_train_batch_size=2, #1
         gradient_accumulation_steps=4, #4
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={'use_reentrant': False},
@@ -137,7 +195,7 @@ def main():
         save_steps=1000,
         bf16=True,    # mixed precision
         tf32=True,
-        do_eval=True,
+        do_eval=do_eval,
         eval_strategy = 'steps',
         per_device_eval_batch_size=1,
         eval_steps = 10,
@@ -148,21 +206,22 @@ def main():
         push_to_hub=False,
         num_train_epochs=10,
     )
-    # LORA_R = 128 #128
-    # LORA_ALPHA = 256 #256
-    # LORA_DROPOUT= 0.05
-    # LORA_TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj","gate_proj", "up_proj","down_proj","lm_head"]
-    # model = prepare_model_for_kbit_training(model)
-    # config = LoraConfig(
-    #     r=LORA_R,
-    #     lora_alpha=LORA_ALPHA,
-    #     target_modules=LORA_TARGET_MODULES,
-    #     lora_dropout=LORA_DROPOUT,
-    #     bias="none",
-    #     task_type="CAUSAL_LM",
-    # )
-    # model.gradient_checkpointing_enable()
-    # model = get_peft_model(model, config)
+    if args.lora or args.qlora:
+        LORA_R = 128 #128
+        LORA_ALPHA = 256 #256
+        LORA_DROPOUT= 0.05
+        LORA_TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj","gate_proj", "up_proj","down_proj","lm_head"]
+        model = prepare_model_for_kbit_training(model)
+        config = LoraConfig(
+            r=LORA_R,
+            lora_alpha=LORA_ALPHA,
+            target_modules=LORA_TARGET_MODULES,
+            lora_dropout=LORA_DROPOUT,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model.gradient_checkpointing_enable()
+        model = get_peft_model(model, config)
     trainer=Trainer(
         model=model,
         args=training_args,
@@ -170,10 +229,8 @@ def main():
         eval_dataset=val_data,
         data_collator=DataCollatorForSeq2Seq(tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
     )
-    #try:
     trainer.train()
     trainer.save_model(out_dir_model)
-    # except:
-    #     print(os.system("nvidia-smi"))
+
 if __name__ == "__main__":
     main()
